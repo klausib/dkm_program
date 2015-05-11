@@ -12,13 +12,11 @@ from mod_filesearch import *
 from mod_shapemerge import *
 from mod_diverses import *
 from mod_parse import *
-##from mod_generate_polygon import *
 from shapely.wkb import *
 from shapely.ops import *
-##from qgis.core import *
-##from qgis.gui import *
-##from qgis.analysis import *
-##from shapely import *
+from shapely import wkb
+from shapely import ops
+
 
 
 
@@ -35,20 +33,17 @@ def logroutine(log_error, text,flag):
 
 
 
-# Environment variable QGISHOME must be set to the install directory
-# before running the application
-qgis_prefix = os.getenv("QGISHOME")
 
 
 ###################################################################
-#WICHTIG: Grundlegendes Verhalten der OGR/GDAl Lib wird so
-#festgelegt und gilt für alle Teile des Programmes während der
-#Laufzeit
+# WICHTIG: Grundlegendes Verhalten der OGR/GDAl Lib wird so
+# festgelegt und gilt für alle Teile des Programmes während der
+# Laufzeit
 ###################################################################
 
 
 
-gdal.UseExceptions()    # WICHTIG: Um GDAL/OGR Fehler als Laufzeitfehler abfangen
+gdal.UseExceptions()    # WICHTIG: Um GDAL/OGR Fehle r als Laufzeitfehler abfangen
                         # und im Code behandeln zu können
 gdal.SetConfigOption( "SQLITE_LIST_ALL_TABLES", "YES" ) #Sonst können keine geometrielosen Tabellen gefunden werden!!!
 gdal.SetConfigOption( "PG_LIST_ALL_TABLES", "YES" ) #Sonst können keine geometrielosen Tabellen gefunden werden!!!
@@ -70,6 +65,10 @@ log_error.setLevel(logging.ERROR)
 
 
 
+#############################################################################
+# Klassendefinition: Startcode und geerbte die GUI
+#####################################################################
+
 class Dialog (QtGui.QMainWindow, Ui_Main_Window):
 #class Dialog (QtGui.QDialog, Ui_frmOptions):
 
@@ -79,10 +78,11 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
     def __init__(self):
         QtGui.QMainWindow.__init__(self)
         Ui_Main_Window.__init__(self)
-        #Ui_frmOptions.__init__(self)
+
 
         self.FileDialog = QtGui.QFileDialog()
         self.FileDialog.setFileMode(QtGui.QFileDialog.Directory)
+
         # und nun was spezielles: Ohne den nachfolgenden
         # Call wird das Widget, das im Designer erzeugt wurde,
         # nicht dargestellt!!
@@ -101,32 +101,24 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
             #Öffnen der Steuertabelle
             #Sqlite DB mit der Kopierliste öffnen
             #Die Steuertabelle einlesen
-            #db  = sqlite3.connect("kopierlistee.sqlite")
 
             if os.path.exists('dkm_lookup.sqlite'):
-                db  = sqlite3.connect("dkm_lookup.sqlite")
-                #print os.path.exists('dkm_lookup.sqlite')
+                self.db  = sqlite3.connect("dkm_lookup.sqlite")
             else:
-
-                #log_error.error('Steuertabelle nicht gefunden')
-                #logroutine(log_error,"Fehler: Oeffnen der Steuertabelle fehlgeschlagen\r",False)
-
                 raise SystemExit
-                #raise Exception
 
 
 
-            db.row_factory = sqlite3.Row    #für den Zugriff auf die einzelnen Spalten mit dem Spaltennamen
+
+            self.db.row_factory = sqlite3.Row    #für den Zugriff auf die einzelnen Spalten mit dem Spaltennamen
             #Den Datenbankkursor instanzieren
-            assert db != None, "Steuertabelle: Datenbankobjekt ist None"   # Datenbankobjekt ist nicht erzeugt worden: Assertion Fehler wird ausgelöst
-            cursor_sqlite = db.cursor()
+            assert self.db != None, "Steuertabelle: Datenbankobjekt ist None"   # Datenbankobjekt ist nicht erzeugt worden: Assertion Fehler wird ausgelöst
+            cursor_sqlite = self.db.cursor()
 
         except:
-
-            sys.exit(0)
-
-
-
+            print 'Steuertabelle nicht gefunden - Programm stoppt'
+            logroutine(log_error, 'Steuertabelle nicht gefunden - Programm stoppt' ,False)
+            sys.exit(0) # Komplettabrruch
 
 
 
@@ -134,11 +126,14 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
 
 
 
-        db.row_factory = sqlite3.Row    #für den Zugriff auf die einzelnen Spalten mit dem Spaltennamen
+
+
+
+        self.db.row_factory = sqlite3.Row    #für den Zugriff auf die einzelnen Spalten mit dem Spaltennamen
 
         #Den Datenbankkursor instanzieren
-        assert db != None, "Steuertabelle: Datenbankobjekt ist None"   # Datenbankobjekt ist nicht erzeugt worden: Assertion Fehler wird ausgelöst
-        self.cursor_sqlite = db.cursor()
+        assert self.db != None, "Steuertabelle: Datenbankobjekt ist None"   # Datenbankobjekt ist nicht erzeugt worden: Assertion Fehler wird ausgelöst
+        self.cursor_sqlite = self.db.cursor()
 
 
         #Die Auswahlabfrage ausführen: Alle Gemeinden die konvertiert werden sollen
@@ -152,9 +147,12 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
             row = []
 
 
+    ##########################################################
+    # hier gehts los wenn man die DKM Generierung startet
+    ##########################################################
     def start(self):
 
-       #Hauptschleife, alle records abarbeiten
+        #Hauptschleife, alle records abarbeiten
         #das bedeutet alle zu aktualisierenden
         #Shapes, Tabellen, Dateien
         if self.auspfad == '' or self.einpfad == '':
@@ -169,7 +167,15 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
         if not os.path.exists(self.auspfad + "dkm/"):
                 os.mkdir(self.auspfad + "dkm/")
 
+
+        gemeinde_pfadliste = []
+
+
         # Haupschleife: Geht Gemeinde für Gemeinde durch
+        # ACHTUNG: Für Vorarlberg gesamt werden einfach alle
+        # durchgerechneten Gemeinden hergenommen. Wenn man also
+        # nur ein paar auswählt, dann besteht Vorarlberg gesamt
+        # nur aus diesen
         for row in self.rows:
             pgem_name = row[0]
             pgem_gesn = row[2]
@@ -200,34 +206,43 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
                 self.cursor_sqlite.execute("select Kgem_gesnr from kat where Pgem_gesnr = " + str(pgem_gesn))
 
             # Alle zur pol. Gemeinde/Vorarlberg gehörenden Katastralgemeinden
+            # Die Shapes der KGs werden zur pol. Gemeinde zusammengefügt
             row_of_kats =  self.cursor_sqlite.fetchall()
-
-            # Die einzelnen DKM Layer werden zusammengeführt
-            filelist = []
+            pfadlist = []
             for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "FPT" + "_V2.shp"))
+                upper_path = filesearch(str(self.einpfad), str(kat[0]) + "FPT" + "_V2.shp")
+                pfadlist.append(os.path.dirname(str(upper_path)) + '/' + str(kat[0]))
+                #print os.path.dirname(upper_path)
+
+
+            # Die einzelnen ursprünglichen DKM Layer werden zusammengeführt
+            filelist = []
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "FPT" + "_V2.shp")
             shapemerge(filelist,pfad + '/Sonstiges/','FPT.shp',['PNR']) # macht auch die indices
 
 
-
-
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "GNR" + "_V2.shp"))
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "GST" + "_V2.shp")
+            shapemerge(filelist,pfad + '/Grundstuecke/','GST.shp',None,pgem_name) # macht auch die indices
+
+            # ACHTUNG: Zuerst GST und dann GNR!!
+            filelist = []
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "GNR" + "_V2.shp")
             shapemerge(filelist,pfad + '/Grundstuecke/','GNR.shp') # macht auch die indices
 
 
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "GST" + "_V2.shp"))
-            shapemerge(filelist,pfad + '/Grundstuecke/','GST.shp',None,pgem_name) # macht auch die indices
 
-
-
-            filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "NFL" + "_V2.shp"))
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "NFL" + "_V2.shp")
             shapemerge(filelist,pfad + '/Nutzung/','NFL.shp') # macht auch die indices
+
 
             # gebaudefläche.shp erzeugen
             drv_out = ogr.GetDriverByName( 'ESRI Shapefile' )
@@ -248,15 +263,17 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
                 lyr.SetFeature(feat)    #sonst wird die Änderung nicht übernommen!!
                 feat_id = feat_id + 1
             lyr.SyncToDisk()
-            #noch den index anlegen
+
+            # noch den index anlegen - dafür gibts ein eigenes sub
             index_anlegen(ds_out,'gebaeudeflaechen')
 
 
-
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "NSL" + "_V2.shp"))
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "NSL" + "_V2.shp")
             shapemerge(filelist,pfad + '/Nutzung/','NSL.shp') # macht auch die indices
+
 
             # sonstige_grenzen.shp erzeugen
             drv_out = ogr.GetDriverByName( 'ESRI Shapefile' )
@@ -277,32 +294,40 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
                 lyr.SetFeature(feat)    #sonst wird die Änderung nicht übernommen!!
                 feat_id = feat_id + 1
             lyr.SyncToDisk()
-            #noch den index anlegen
+
+            # noch den index anlegen - dafür gibts ein eigenes sub
             index_anlegen(ds_out,'sonstige_grenzen')
 
 
 
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "NSY" + "_V2.shp"))
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "NSY" + "_V2.shp")
             shapemerge(filelist,pfad + '/Nutzung/','NSY.shp') # macht auch die indices
 
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "SGG" + "_V2.shp"))
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "SGG" + "_V2.shp")
             shapemerge(filelist,pfad + '/Grenzpunkte/','SGG.shp') # macht auch die indices
 
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "SSB" + "_V2.shp"))
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "SSB" + "_V2.shp")
             shapemerge(filelist,pfad + '/Sonstiges/','SSB.shp') # macht auch die indices
 
             filelist = []
-            for kat in row_of_kats:
-                filelist.append (filesearch(str(self.einpfad),  str(kat[0]) + "VGG" + "_V2.shp"))
+
+            for pfad_in in pfadlist:
+                filelist.append (pfad_in + "VGG" + "_V2.shp")
             shapemerge(filelist,pfad + '/Sonstiges/','VGG.shp') # macht auch die indices
 
+
+
             # kgflaeche.shp erzeugen - mit Hilfe von Shapely
+            # und mit Attributen füllen die aus
             drv_out = ogr.GetDriverByName( 'ESRI Shapefile' )
             if os.path.exists(str(pfad + '/Sonstiges/kgflaeche.shp')):
                 drv_out.DeleteDataSource(str(pfad + '/Sonstiges/kgflaeche.shp'))
@@ -313,7 +338,6 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
             # Feature ID Spalte, sollte immer dabei sein, sonst gehts automatisch,
             # aber so find ich es eleganter
             Fid_feld = ogr.FieldDefn('FID', ogr.OFTInteger)
-            # Fid_feld.SetWidth(11)
             lyr_out.CreateField(Fid_feld)
             # Das Feld für die KGNR definieren und hinzufügen
             kg_feld = ogr.FieldDefn('KG', ogr.OFTString)
@@ -325,24 +349,24 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
             fid = 0
             for file in filelist:
 
-                #reiner KG Name
+                # reiner KG Name
                 kgname = os.path.basename(file)
-                kgname = os.path.splitext(kgname) #Gibt ein Tuple zurück
+                kgname = os.path.splitext(kgname) #G ibt ein Tuple zurück
                 kgname = string.replace(kgname[0],'VGG_V2','')
 
                 # VGG der jeweiligen KG öffnen
                 kg_ds = ogr.Open(str(file))
                 kg_lyr = kg_ds.GetLayer()
-                kg_lyr.SetAttributeFilter('VGG = 3 or VGG = 4 or VGG = 8 or VGG = 9')
-                feat_union = (shapeunion(None,None,None,None,kg_lyr))   #Linestrings vereinen - brauchts das wirklich??
-                #geom_poly = ogr.ForceToPolygon(feat_union.GetGeometryRef())
+                kg_lyr.SetAttributeFilter('VGG = 3 or VGG = 4 or VGG = 5 or VGG = 6 or VGG = 8 or VGG = 9')
+                feat_union = (shapeunion(None,None,None,None,kg_lyr))   # Linestrings vereinen - brauchts das wirklich??
+
                 geom_poly = feat_union.GetGeometryRef()
 
                 wkb_exp = geom_poly.ExportToWkb()
-                shp_geom = loads(wkb_exp)   #aus der shapely
+                shp_geom = loads(wkb_exp)   # aus der shapely
                 tmp = polygonize (shp_geom)
 
-                liste = list(tmp)   #Generator Objekt zur Liste konvertieren
+                liste = list(tmp)   # Generator Objekt zur Liste konvertieren
 
                 if len(liste) > 1:
                     logroutine(log_error,('ACHTUNG: Beim Erzeugen der KG Fläche gab es mehrere Polygone für die KG').decode('utf8') + ' ' + kgname + '\r',False)
@@ -362,33 +386,121 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
 
 
 
-
             ####################################################
             # Erzeugen der Shape- Texte und Shape- Symbole
             ####################################################
 
-            # Grenzpunkt Nummern und Symbole
-            parse(log_error, str(pfad) + '/Grenzpunkte/','SGG.shp', str(pfad) + '/Grenzpunkte/','grenzpunkt_symbole.shp','symbol','TYP')
-            # parse(str(pfad) + '/Grenzpunkte/','SGG.shp', str(pfad) + '/Grenzpunkte/','grenzpunkt_nummern.shp','text','PNR')
-            #noch den index anlegen
-            #index_anlegen(str(pfad) + '/Grenzpunkte/','grenzpunkt_symbole')
+            # ACHTUNG: Vorarlberg muss ganz am Schluss gerechnet werden, wenn alle anderen Gemeinden fertig sin
+            # und das auch im selber Rechnedurchlauf!! Es werden für Vorarlberg nur die Gemeinden genommen
+            # die im Sleben Programmlauf erzeugt wurden, wie auch Vorarlberg. Wenn nur eine gerechnet wird, dann nur eine etc...
+            if pgem_name == 'Vorarlberg':
+
+                #alles auscodieren machts üebrsichtlicher
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    #print einzelgem
+                    file = (einzelgem + '/Grenzpunkte/grenzpunkt_symbole.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Grenzpunkte/','grenzpunkt_symbole.shp') # macht auch die indices
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Grenzpunkte/grenzpunkt_nummern.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Grenzpunkte/','grenzpunkt_nummern.shp') # macht auch die indices
 
 
-            # Nutzungssysmbole
-            parse(log_error, str(pfad) + '/Nutzung/','NSY.shp', str(pfad) + '/Nutzung/','nutzungs_symbole.shp','symbol','NS','ROT_NS','MST_NS')
-            #parse(str(pfad) + '/Nutzung/','NSY.shp', str(pfad) + '/Nutzung/','nutzungs_symbole.shp','symbol','NS_RECHT','ROT_NS','MST_NS')
-            #noch den index anlegen
-            #index_anlegen(str(pfad) + '/Nutzung/','nutzungs_symbole')
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Nutzung/nutzungs_symbole.shp')
+                    vlbg_pfadlist.append(str(file))
 
-            # Sonstige Symbole
-            parse(log_error, str(pfad) + '/Sonstiges/','SSB.shp', str(pfad) + '/Sonstiges/','sonstige_symbole.shp','symbol','TYP', 'ROT_NR')
-            #noch den index anlegen
-            #index_anlegen(str(pfad) + '/Sonstiges/','sonstige_symbole')
+                shapemerge(vlbg_pfadlist,pfad + '/Nutzung/','nutzungs_symbole.shp') # macht auch die indices
 
-            # Festpunkt Symbole
-            parse(log_error, str(pfad) + '/Sonstiges/','FPT.shp', str(pfad) + '/Sonstiges/','festpunkt_symbole.shp','symbol','TYP')
-            #noch den index anlegen
-            #index_anlegen(str(pfad) + '/Sonstiges/','festpunkt_symbole')
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Sonstiges/sonstige_symbole.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Sonstiges/','sonstige_symbole.shp') # macht auch die indices
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Sonstiges/sonstige_texte.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Sonstiges/','sonstige_texte.shp') # macht auch die indices
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Grundstuecke/grundstueck_nummern.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Grundstuecke/','grundstueck_nummern.shp') # macht auch die indices
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Grundstuecke/grundstueck_nummern_mittelgross.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Grundstuecke/','grundstueck_nummern_mittelgross.shp') # macht auch die indices
+
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Grundstuecke/grundstueck_nummern_gross.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Grundstuecke/','grundstueck_nummern_gross.shp') # macht auch die indices
+
+
+                vlbg_pfadlist = []
+                for einzelgem in gemeinde_pfadliste:
+                    file = (einzelgem + '/Sonstiges/festpunkt_symbole.shp')
+                    vlbg_pfadlist.append(str(file))
+
+                shapemerge(vlbg_pfadlist,pfad + '/Sonstiges/','festpunkt_symbole.shp') # macht auch die indices
+
+
+
+            else:
+                # Grenzpunkt Nummern und Symbole
+                parse(log_error, str(pfad) + '/Grenzpunkte/','SGG.shp', str(pfad) + '/Grenzpunkte/','grenzpunkt_symbole.shp','symbol','TYP')
+                parse(log_error, str(pfad) + '/Grenzpunkte/','SGG.shp', str(pfad) + '/Grenzpunkte/','grenzpunkt_nummern.shp','text', None,'PNR', 'ROT_PNR', None, 'RW_PNR', 'HW_PNR')
+
+
+                # Nutzungssysmbole
+                parse(log_error, str(pfad) + '/Nutzung/','NSY.shp', str(pfad) + '/Nutzung/','nutzungs_symbole.shp','symbol','NS',None,'ROT_NS','MST_NS')
+
+                # Sonstige Symbole und sonstige Texte
+                parse(log_error, str(pfad) + '/Sonstiges/','SSB.shp', str(pfad) + '/Sonstiges/','sonstige_symbole.shp','symbol','TYP',None, 'ROT_NR')
+                parse(log_error, str(pfad) + '/Sonstiges/','SSB.shp', str(pfad) + '/Sonstiges/','sonstige_texte.shp','text', None,'TEXT', 'ROT_NR', 'TEXTGR')
+
+                # Grundstück Nummern
+                parse(log_error, str(pfad) + '/Grundstuecke/','GNR.shp', str(pfad) + '/Grundstuecke/','grundstueck_nummern.shp','text', None,'GNR', 'ROT_GNR', 'MST','RW_PFNR', 'HW_PFNR', 1) # konstanter MAßstab
+                parse(log_error, str(pfad) + '/Grundstuecke/','GNR.shp', str(pfad) + '/Grundstuecke/','grundstueck_nummern_mittelgross.shp','text', None,'GNR', 'ROT_GNR', 'MST','RW_PFNR', 'HW_PFNR', 1.5) # konstanter MAßstab
+                parse(log_error, str(pfad) + '/Grundstuecke/','GNR.shp', str(pfad) + '/Grundstuecke/','grundstueck_nummern_gross.shp','text', None,'GNR', 'ROT_GNR', 'MST','RW_PFNR', 'HW_PFNR', 2) # konstanter MAßstab
+
+
+                # Festpunkt Symbole
+                parse(log_error, str(pfad) + '/Sonstiges/','FPT.shp', str(pfad) + '/Sonstiges/','festpunkt_symbole.shp','symbol','TYP')
+
+
+            shutil.copyfile("dkm.qgs", str(pfad) + "/dkm.qgs")
+
+
+            # Für Vorarlberg gesamt (muss in der SQL Lite Abfrage als letztes kommen und davor
+            # alle Gemeinden fertig sein
+            gemeinde_pfadliste.append(pfad)
+
+            #Auf erledigt stellen
+            #print 'dkm_main' + pgem_name
+            self.cursor_sqlite.execute("update pol set aktual = 'erledigt' where pgem_name = '" + pgem_name + "'")
+            self.db.commit() #
 
 
     # Einlesen der Pfade: Quellpfad der DKM Daten
@@ -403,7 +515,6 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
                 self.lblPathEin.setText(self.einpfad.replace("\\","/"))
             else:
                 QtGui.QMessageBox.critical(None, "Achtung",("Bitte richtiges Verzeichnis auswählen!").decode("utf-8"))
-                QgsApplication.exitQgis()
                 return
 
     # Einlesen der Pfade: Zielpfad des Ergebnis der Umwandlung
@@ -418,7 +529,6 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
                 self.lblPathAus.setText(self.auspfad.replace("\\","/"))
             else:
                 QtGui.QMessageBox.critical(None, "Achtung",("Bitte richtiges Verzeichnis auswählen!").decode("utf-8"))
-                QgsApplication.exitQgis()
                 return
 
      # Zum close Event
@@ -444,28 +554,16 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
         # QgsApplication.exitQgis()
 
 
+# Das obligate Main (damit Coe auch als SUB ausgeführt werden kann)
 
 
 def main(argv):
     import sys
 
-    app = QtGui.QApplication(argv)
-     # create Qt application
-##
-##      # Initialize qgis libraries
-##    QgsApplication.setPrefixPath(qgis_prefix, True)
-##
-##    # load providers
-##    QgsApplication.initQgis()
-    #KG Fläche Union über alle Grundstücke: Operation über QGIS API
-    #gstLyr = QgsVectorLayer("D:/dkm/dkm/Feldkirch/Grundstuecke/GST.shp", "GST","ogr")
-    #gstLyr = QgsVectorLayer("D:/depp.shp", "depp","ogr")
-
-    window = Dialog()
-
+    app = QtGui.QApplication(argv) # Applikationsobjekt
+    window = Dialog()   # Die GUI
     window.show()
-
-    sys.exit(app.exec_())
+    sys.exit(app.exec_())   # Die Event Loop
 
 # als main start6en oder optinal auch zum Import
 # als Modul vorbereiten
