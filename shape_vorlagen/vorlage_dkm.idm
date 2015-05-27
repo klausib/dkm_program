@@ -1,0 +1,18 @@
+<OGRMILayerAttrIndex>
+  <MIIDFilename>vorlage_dkm.ind</MIIDFilename>
+  <OGRMIAttrIndex>
+    <FieldIndex>3</FieldIndex>
+    <FieldName>TYP</FieldName>
+    <IndexIndex>1</IndexIndex>
+  </OGRMIAttrIndex>
+  <OGRMIAttrIndex>
+    <FieldIndex>2</FieldIndex>
+    <FieldName>ZEICHEN</FieldName>
+    <IndexIndex>2</IndexIndex>
+  </OGRMIAttrIndex>
+  <OGRMIAttrIndex>
+    <FieldIndex>1</FieldIndex>
+    <FieldName>MST</FieldName>
+    <IndexIndex>3</IndexIndex>
+  </OGRMIAttrIndex>
+</OGRMILayerAttrIndex>

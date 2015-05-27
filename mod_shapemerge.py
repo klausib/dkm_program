@@ -1,15 +1,25 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/python
 
+
+
 from osgeo import ogr, osr, gdal
 import os,sys,string, time, copy
 from mod_diverses import *
+
+
+
+################################################################
+# sub merged sämtliche in einer (Pfadliste) vorkommenden Shapes
+# zusammen und speichert sie an einem angegebenen Ort
+# mit angegebnenem Namen
+################################################################
 
 def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
 
 
 
-    #Das Standardbezugssystem hardcodiert...
+    # Das Standardbezugssystem hardcodiert...
     reffi = osr.SpatialReference()
     reffi.ImportFromEPSG(31254)
 
@@ -20,7 +30,7 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
     lyr  = einshape.GetLayer()
     geometrityp = lyr.GetGeomType()
 
-    # Das ausgangsshape wird angelegt
+    # Das Ausgangsshape wird angelegt
     out_driver = ogr.GetDriverByName( 'ESRI Shapefile' )
     # und falls ein glachnamiges existiert, dieses gelöscht
     if os.path.exists(str(auspfad + ausname)):
@@ -28,22 +38,27 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
     out_ds = out_driver.CreateDataSource(str(auspfad+ausname))
     out_layer = out_ds.CreateLayer(str(auspfad+ausname),srs = reffi, geom_type = geometrityp)    #das eigentliche Shape
 
-    # Die Attributdefinition wird ebenfalls vom ersten Shape übernommen
-    #Erstmal die FID anlegen
+
+
+    # Die Attributdefinition wird ebenfalls vom ersten Shape der Liste übernommen
+    # Erstmal die FID anlegen
     feld = ogr.FieldDefn('FID', ogr.OFTInteger)
     out_layer.CreateField(feld)
-
+    # Und dann die Felder...
     i = 0
     feldanzahl = lyr.GetLayerDefn().GetFieldCount()
     feldnamen = []
+    # Anlegen der Attribute (Vorbild ist erstes Shape das gemerged wird)
     while i < feldanzahl:
+        Fdefn = lyr.GetLayerDefn().GetFieldDefn(i)
+        if not Fdefn.GetName() == 'FID': # FID hab ich grad angelegt, brauch ich nicht noch einmal
+            out_layer.CreateField(Fdefn)
+            feldnamen.append(Fdefn.GetName())
+        i = i + 1
 
-       Fdefn = lyr.GetLayerDefn().GetFieldDefn(i)
-       out_layer.CreateField(Fdefn)
-       feldnamen.append(Fdefn.GetName())
-       i = i + 1
-
-    if string.find(ausname, 'GST') > -1: #Zusätzliche Attribute für GST Flächen
+    # Ausnahmeregel für Grundstückshape
+    # wir brauchen zusätzliche Felder
+    if string.find(ausname, 'GST') > -1: # Zusätzliche Attribute für GST Flächen
 
             feld = ogr.FieldDefn('Area', ogr.OFTReal)
             out_layer.CreateField(feld)
@@ -61,6 +76,12 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
             feld.SetWidth(20)
             out_layer.CreateField(feld)
 
+    # Ausnahmeregel für Grundstücksnummernshape
+    # wir brauchen zusätzliche Felder
+    if string.find(ausname, 'GNR') > -1: # Masstabsattribut für GNR Shape
+
+            feld = ogr.FieldDefn('MST', ogr.OFTInteger)
+            out_layer.CreateField(feld)
 
 
 
@@ -73,11 +94,16 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
         einshape = ogr.Open(file)
         lyr = einshape.GetLayer()  # das eigentliche shape
 
-        # prüfen ob es dazu passt
-        #if (not out_layer.GetLayerDefn() == lyr.GetLayerDefn()) or (not lyr.GetGeomType() == out_layer.GetGeomType()):
-         #   next
-        #defn = lyr.GetLayerDefn()
-       #tt = time.time()
+        #so wärs wenn das maßstabsfeld noch verwendet wird,
+        #das ist aber anscheinend nicht mehr der Fall wie das DXF zeigt
+        # der Wert ist nämlich im Shape GST den wir ins GNR Shape eintragen sollten
+        ############################################################################
+
+        #if string.find(ausname, 'GNR') > -1: # Zusätzliche Attribute für GNR Flächen - Masstabsfeld
+            #gst_shape = ogr.Open(str(auspfad + ausname).replace('GNR','GST'))
+            #lyr_gst = gst_shape.GetLayer()
+
+        #############################################################################
 
         for feat in lyr:
             out_feat = ogr.Feature(out_layer.GetLayerDefn())
@@ -90,28 +116,6 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
             out_feat.SetGeometry(feat.GetGeometryRef().Clone())
 
             if string.find(ausname, 'GST') > -1: # Zusätzliche Attribute für GST Flächen
-##                print 'Hier 1'
-##                defn2 = depp.GetDefnRef()
-##                defn = ogr.FeatureDefn(defn2)
-##                depp = None
-##
-##                feld = ogr.FieldDefn('Area', ogr.OFTReal)
-##                defn.AddFieldDefn(feld)
-##
-##                feld = ogr.FieldDefn('KG_GST', ogr.OFTString)
-##                feld.SetWidth(10)
-##                defn.AddFieldDefn(feld)
-####
-####
-##                feld = ogr.FieldDefn('GSTNR', ogr.OFTString)
-##                feld.SetWidth(10)
-##                defn.AddFieldDefn(feld)
-##
-##                feld = ogr.FieldDefn('PGEM_NAME', ogr.OFTString)
-##                feld.SetWidth(20)
-##                defn.AddFieldDefn(feld)
-
-
 
                 out_feat.SetField('area', feat.GetGeometryRef().GetArea())
                 inhalt = out_feat.GetFieldAsString('KG') + '-' + out_feat.GetFieldAsString('GNR')
@@ -122,57 +126,38 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
                 out_feat.SetField('PGEM_NAME', str(polgem_name))
                 #out_feat.SetField('FID',fid)
 
-##                #defn.Destroy()
-##                defn = feat.GetDefnRef()
-##                feld = ogr.FieldDefn('KG_GST', ogr.OFTString)
-##                feld.SetWidth(10)
+            if string.find(ausname, 'GNR') > -1: # Zusätzliche Attribute für GNR Flächen - Masstabsfeld
 
-##                defn.AddFieldDefn(feld)
+                #so wärs wenn das maßstabsfeld noch verwendet wird,
+                #das ist aber anscheinend nicht mehr der Fall wie das DXF zeigt
+                ##########################################################################
+                #nummer = out_feat.GetFieldAsString('GNR').strip()
+                #mst = 2
+                #lyr_gst.ResetReading()  # Unbedingt den Cursor an den Anfang stellen
+                #for feat_gst in lyr_gst:
+                    #if feat_gst.GetFieldAsString('GNR').strip() == nummer:
+                        #mst = feat_gst.GetFieldAsInteger('MST') * 2 # BEV ist leider inkonsistent, deshalb Wert verdoppeln
+                #out_feat.SetField('MST', mst)
+                #############################################################################
 
 
-
-
-##                inhalt = feat.GetFieldAsString('KG') + '-' + feat.GetFieldAsString('GNR')
-##                feat.SetField('KG_GST',inhalt)
-##                print 'Hier 2'
-                #out_layer.CreateFeature(out_feat)
-
-
-##                print 'Hier Ende'
-            #else:
+                out_feat.SetField('MST', 2) # wir setzen einfach 2 (Grüße Nummern 2 Meter) ins Feld ein
 
             out_layer.CreateFeature(out_feat)
 
             fid = fid + 1
 
-    #print str( tt - time.time()) + ' ' + ausname
-    # und raus damit
-    out_layer.SyncToDisk()
 
-##    ###################################################
-##    # Setzen der Indices
-##    ###################################################
-##    #den räumlichen Index gleich anlegen
-##    out_ds.ExecuteSQL('create spatial index on ' + out_layer.GetName())
-##
-##
-##    #den Attributiven Index anlegen
-##    if not liste_feldnamen == None and len(liste_feldnamen) > 0:
-##        #feldnamenIn = din.getElementsByTagName("FieldName") #Diese Node im XNL enhält die Spaltenname mit Index!
-##        #for feldname in liste_feldnamen:
-##            #idx.append(feldname.firstChild.data)
-##
-##
-##
-##        for indi in liste_feldnamen:
-##            query = str('create index on ' + out_layer.GetName() + ' using ' + indi + '')
-##            out_ds.ExecuteSQL(query)
+    # und raus damit auf die Festplatte
+    out_layer.SyncToDisk()
 
     #noch den index anlegen
     index_anlegen(out_ds,out_layer.GetName(), liste_feldnamen)
 
+
+
 ##########################################################################################
-# Diese Modul vereint die Geometrie aller Objekte in einem Shape zu einem einzigen Objekt
+# Diese Modul vereint die Geometrie aller Objekte in einem Shape zu EINEM einzigen Objekt
 # und gibt die Geometrie zurück oder speichert sie als Layer in einem Shape -
 # abhängig von den Übergabeparameter
 ##########################################################################################
@@ -204,9 +189,9 @@ def shapeunion(einpfad,einname,auspfad,ausname, einlayer = None, lyr_dummy = Non
     # auch hier wieder zwei Varianten
     # mem_drv_out = ogr.GetDriverByName( 'ESRI Shapefile' )
     # mem_shp_out = mem_drv_in.CreateDataSource( str('/vsimem/dummy.shp') )
-    #mem_drv_out = ogr.GetDriverByName( 'Memory' )
-    #mem_shp_out = mem_drv_in.CreateDataSource( 'dummy_2')
-    #lyr_mem_out = mem_shp_out.CreateLayer('dummy',geom_type = geometrityp)  # das shape wird in den memory layer kopiert
+    # mem_drv_out = ogr.GetDriverByName( 'Memory' )
+    # mem_shp_out = mem_drv_in.CreateDataSource( 'dummy_2')
+    # lyr_mem_out = mem_shp_out.CreateLayer('dummy',geom_type = geometrityp)  # das shape wird in den memory layer kopiert
 
 
     # Attribute sind beim dissolve eigentlich sinnlos und werden nicht erzeugt
@@ -216,16 +201,12 @@ def shapeunion(einpfad,einname,auspfad,ausname, einlayer = None, lyr_dummy = Non
 
     for feature in lyr_mem_in:
         gemi = feature.GetGeometryRef()
-        #lyr_mem_out.ResetReading()
 
-        if not i < 1:
-            #print str(i)
-            #gemi_1 = lyr_mem_out.GetNextFeature()   #ist immer nur eins!
+        if not i < 1:   # alles bis auf das erste Feature
             dummy = gemi.Union(gemi_2).Clone()    # gemi_2 wird neu als union
             gemi_2 = dummy.Clone()
             dummy = None
-        elif i < 1:
-            #print str(i)
+        elif i < 1: # das erste Feature
             outfeature = ogr.Feature(feature.GetDefnRef())  # nur beim ersten mal!
             gemi_2 = gemi.Clone()    # die startgeometrie
 
@@ -236,6 +217,7 @@ def shapeunion(einpfad,einname,auspfad,ausname, einlayer = None, lyr_dummy = Non
     # geometrie ins outfeatureobject schreiben
     #######################################
     outfeature.SetGeometry(ogr.ForceToLineString(gemi_2))
+
     # lyr_mem_out.CreateFeature(outfeature)
     # lyr_dummy = lyr_mem_out
 
@@ -246,17 +228,12 @@ def shapeunion(einpfad,einname,auspfad,ausname, einlayer = None, lyr_dummy = Non
     # wird ein lyerobjekt übergeben
     # gibts das ergebnis auch so zurück und ende
     if not (einlayer == None):
-##        for feat in lyr_mem_out:
-##            lyr_dummy.CreateFeature(feat)
+        return outfeature
 
-##        print 'im Sub' + str(gemi_2)
-##        return gemi_2#.Clone()
-        #print 'im Sub' + str(outfeature)
-        return outfeature#.Clone()
-##        print 'im Sub' + str(lyr_mem_out)
-        #return lyr_mem_out#.Clone()
+        #return lyr_mem_out
 
-    #wurde ein shapepfad übergeben, gehts hier weiter
+    # wurde ein shapepfad übergeben, gehts hier weiter
+    # das Shape wird ins Filesystem geschrieben
 
     ##############################################
     # das endergebbnisshape, nun am filesystem
@@ -264,8 +241,8 @@ def shapeunion(einpfad,einname,auspfad,ausname, einlayer = None, lyr_dummy = Non
     drv_out = ogr.GetDriverByName( 'ESRI Shapefile' )
     if os.path.exists(str(auspfad + ausname)):
         drv_out.DeleteDataSource(str(auspfad+ausname))
-    ds_out = drv_out.CreateDataSource(str(auspfad+ausname))  #beim Shape ist Datasource bereits das File selbst
-    lyr_out = ds_out.CreateLayer(str(ausname),geom_type = geometrityp)    #der eigentliche Layer (beim Shape ist das immer nur einer pro DS9
+    ds_out = drv_out.CreateDataSource(str(auspfad+ausname))  # beim Shape ist Datasource bereits das File selbst
+    lyr_out = ds_out.CreateLayer(str(ausname),geom_type = geometrityp)    # der eigentliche Layer (beim Shape ist das immer nur einer pro DS9
 
 
 
