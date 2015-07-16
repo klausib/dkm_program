@@ -6,6 +6,7 @@ TODO:
 
 """
 """History (most recent first):
+14-dec-2010 [als]   added Memo file support
 16-sep-2010 [als]   fromStream: fix century of the last update field
 11-feb-2007 [als]   added .ignoreErrors
 10-feb-2007 [als]   added __getitem__: return field definitions
@@ -14,8 +15,8 @@ TODO:
 15-dec-2005 [yc]    created
 """
 
-__version__ = "$Revision: 1.6 $"[11:-2]
-__date__ = "$Date: 2010/09/16 05:06:39 $"[7:-2]
+__version__ = "$Revision: 1.7 $"[11:-2]
+__date__ = "$Date: 2010/12/14 11:07:45 $"[7:-2]
 
 __all__ = ["DbfHeader"]
 
@@ -137,6 +138,14 @@ class DbfHeader(object):
     month = property(lambda self: self.lastUpdate.month)
     day = property(lambda self: self.lastUpdate.day)
 
+    @property
+    def hasMemoField(self):
+        """True if at least one field is a Memo field"""
+        for _field in self.fields:
+            if _field.isMemo:
+                return True
+        return False
+
     def ignoreErrors(self, value):
         """Update `ignoreErrors` flag on self and all fields"""
         self._ignore_errors = value = bool(value)
@@ -186,23 +195,53 @@ Version (signature): 0x%02x
         # from the tuple could raise an error, in such a case I don't
         # wanna add any of the definitions -- all will be ignored)
         _defs = []
-        _recordLength = 0
+        _recordLength = self.recordLength
         for _def in defs:
             if isinstance(_def, fields.DbfFieldDef):
                 _obj = _def
             else:
                 (_name, _type, _len, _dec) = (tuple(_def) + (None,) * 4)[:4]
                 _cls = fields.lookupFor(_type)
-                _obj = _cls(_name, _len, _dec,
+                _obj = _cls(_name, _len, _dec, _recordLength,
                     ignoreErrors=self._ignore_errors)
             _recordLength += _obj.length
             _defs.append(_obj)
         # and now extend field definitions and
         # update record length
         self.fields += _defs
-        return _recordLength
+        return (_recordLength - self.recordLength)
+
+    def _calcHeaderLength(self):
+        """Update self.headerLength attribute after change to header contents
+        """
+        # recalculate headerLength
+        self.headerLength = 32 + (32 * len(self.fields)) + 1
+        if self.signature == 0x30:
+            # Visual FoxPro files have 263-byte zero-filled field for backlink
+            self.headerLength += 263
 
     ## interface methods
+
+    def setMemoFile(self, memo):
+        """Attach MemoFile instance to all memo fields; check header signature
+        """
+        _has_memo = False
+        for _field in self.fields:
+            if _field.isMemo:
+                _field.file = memo
+                _has_memo = True
+        # for signatures list, see
+        # http://www.clicketyclick.dk/databases/xbase/format/dbf.html#DBF_NOTE_1_TARGET
+        # http://www.dbf2002.com/dbf-file-format.html
+        # If memo is attached, will use 0x30 for Visual FoxPro file,
+        # 0x83 for dBASE III+.
+        if _has_memo \
+        and (self.signature not in (0x30, 0x83, 0x8B, 0xCB, 0xE5, 0xF5)):
+            if memo.is_fpt:
+                self.signature = 0x30
+            else:
+                self.signature = 0x83
+        self._calcHeaderLength()
 
     def addField(self, *defs):
         """Add field definition to the header.
@@ -218,14 +257,10 @@ Version (signature): 0x%02x
             dbfh.addField(dbf.DbfNumericFieldDef("origprice", 5, 2))
 
         """
-        _oldLen = self.recordLength
+        if not self.recordLength:
+            self.recordLength = 1
         self.recordLength += self._addField(*defs)
-        if not _oldLen:
-            self.recordLength += 1
-            # XXX: may be just use:
-            # self.recordeLength += self._addField(*defs) + bool(not _oldLen)
-        # recalculate headerLength
-        self.headerLength = 32 + (32 * len(self.fields)) + 1
+        self._calcHeaderLength()
         self.changed = True
 
     def write(self, stream):
@@ -234,10 +269,19 @@ Version (signature): 0x%02x
         stream.write(self.toString())
         stream.write("".join([_fld.toString() for _fld in self.fields]))
         stream.write(chr(0x0D))   # cr at end of all hdr data
+        _pos = stream.tell()
+        if _pos < self.headerLength:
+            stream.write("\0" * (self.headerLength - _pos))
         self.changed = False
 
     def toString(self):
         """Returned 32 chars length string with encoded header."""
+        # FIXME: should keep flag and code page marks read from file
+        if self.hasMemoField:
+            _flag = "\x02"
+        else:
+            _flag = "\0"
+        _codepage = "\0"
         return struct.pack("<4BI2H",
             self.signature,
             self.year - 1900,
@@ -245,7 +289,7 @@ Version (signature): 0x%02x
             self.day,
             self.recordCount,
             self.headerLength,
-            self.recordLength) + "\0" * 20
+            self.recordLength) + "\0" * 16 + _flag + _codepage + "\0\0"
 
     def setCurrentDate(self):
         """Update ``self.lastUpdate`` field with current date value."""

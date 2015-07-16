@@ -4,6 +4,8 @@ TODO:
   - make memos work
 """
 """History (most recent first):
+14-dec-2010 [als]   support reading and writing Memo fields;
+                    .toString: write field offset
 26-may-2009 [als]   DbfNumericFieldDef.decodeValue: strip zero bytes
 05-feb-2009 [als]   DbfDateFieldDef.encodeValue: empty arg produces empty date
 16-sep-2008 [als]   DbfNumericFieldDef decoding looks for decimal point
@@ -25,8 +27,8 @@ TODO:
 15-dec-2005 [yc]    field definitions moved from `dbf`.
 """
 
-__version__ = "$Revision: 1.14 $"[11:-2]
-__date__ = "$Date: 2009/05/26 05:16:51 $"[7:-2]
+__version__ = "$Revision: 1.15 $"[11:-2]
+__date__ = "$Date: 2010/12/14 11:04:49 $"[7:-2]
 
 __all__ = ["lookupFor",] # field classes added at the end of the module
 
@@ -34,6 +36,7 @@ import datetime
 import struct
 import sys
 
+from memo import MemoData
 import utils
 
 ## abstract definitions
@@ -71,6 +74,9 @@ class DbfFieldDef(object):
     # default value for the field. this field must be
     # overriden in child classes
     defaultValue = None
+
+    # True if field data is kept in the Memo file
+    isMemo = property(lambda self: self.typeCode in "GMP")
 
     def __init__(self, name, length=None, decimalCount=None,
         start=None, stop=None, ignoreErrors=False,
@@ -144,8 +150,7 @@ class DbfFieldDef(object):
         return (
             _name +
             self.typeCode +
-            #data address
-            chr(0) * 4 +
+            struct.pack("<L", self.start) +
             chr(self.length) +
             chr(self.decimalCount) +
             chr(0) * 14
@@ -326,20 +331,23 @@ class DbfLogicalFieldDef(DbfFieldDef):
 
 
 class DbfMemoFieldDef(DbfFieldDef):
-    """Definition of the memo field.
-
-    Note: memos aren't currenly completely supported.
-
-    """
+    """Definition of the memo field."""
 
     typeCode = "M"
-    defaultValue = " " * 10
-    length = 10
+    defaultValue = "\0" * 4
+    length = 4
+    # MemoFile instance.  Must be set before reading or writing to the field.
+    file = None
+    # MemoData type for strings written to the memo file
+    memoType = MemoData.TYPE_MEMO
 
     def decodeValue(self, value):
-        """Return int .dbt block number decoded from the string object."""
-        #return int(value)
-        raise NotImplementedError
+        """Return MemoData instance containing field data."""
+        _block = struct.unpack("<L", value)[0]
+        if _block:
+            return self.file.read(_block)
+        else:
+            return MemoData("", self.memoType)
 
     def encodeValue(self, value):
         """Return raw data string encoded from a ``value``.
@@ -347,8 +355,18 @@ class DbfMemoFieldDef(DbfFieldDef):
         Note: this is an internal method.
 
         """
-        #return str(value)[:self.length].ljust(self.length)
-        raise NotImplementedError
+        if value:
+            return struct.pack("<L",
+                self.file.write(MemoData(value, self.memoType)))
+        else:
+            return self.defaultValue
+
+
+class DbfGeneralFieldDef(DbfFieldDef):
+    """Definition of the general (OLE object) field."""
+
+    typeCode = "G"
+    memoType = MemoData.TYPE_OBJECT
 
 
 class DbfDateFieldDef(DbfFieldDef):

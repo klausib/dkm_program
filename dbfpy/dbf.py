@@ -38,6 +38,8 @@ Examples:
 
 """
 """History (most recent first):
+17-dec-2012 [als]   support slicing
+14-dec-2010 [als]   added Memo file support
 11-feb-2007 [als]   export INVALID_VALUE;
                     Dbf: added .ignoreErrors, .INVALID_VALUE
 04-jul-2006 [als]   added export declaration
@@ -56,13 +58,14 @@ Examples:
 18-feb-1998 [jjk]   from dbfload.py
 """
 
-__version__ = "$Revision: 1.7 $"[11:-2]
-__date__ = "$Date: 2007/02/11 09:23:13 $"[7:-2]
+__version__ = "$Revision: 1.9 $"[11:-2]
+__date__ = "$Date: 2012/12/17 19:16:57 $"[7:-2]
 __author__ = "Jeff Kunce <kuncej@mail.conservation.state.mo.us>"
 
 __all__ = ["Dbf"]
 
 import header
+import memo
 import record
 from utils import INVALID_VALUE
 
@@ -81,7 +84,7 @@ class Dbf(object):
 
     """
 
-    __slots__ = ("name", "header", "stream",
+    __slots__ = ("name", "header", "stream", "memo",
         "_changed", "_new", "_ignore_errors")
 
     HeaderClass = header.DbfHeader
@@ -90,27 +93,27 @@ class Dbf(object):
 
     ## initialization and creation helpers
 
-    def __init__(self, f, readOnly=False, new=False, ignoreErrors=False):
+    def __init__(self, f, readOnly=False, new=False, ignoreErrors=False,
+                 memoFile=None):
         """Initialize instance.
 
         Arguments:
             f:
                 Filename or file-like object.
-            new:
-                True if new data table must be created. Assume
-                data table exists if this argument is False.
             readOnly:
                 if ``f`` argument is a string file will
                 be opend in read-only mode; in other cases
                 this argument is ignored. This argument is ignored
                 even if ``new`` argument is True.
-            headerObj:
-                `header.DbfHeader` instance or None. If this argument
-                is None, new empty header will be used with the
-                all fields set by default.
+            new:
+                True if new data table must be created. Assume
+                data table exists if this argument is False.
             ignoreErrors:
                 if set, failing field value conversion will return
                 ``INVALID_VALUE`` instead of raising conversion error.
+            memoFile:
+                optional path to the FPT (memo fields) file.
+                Default is generated from the DBF file name.
 
         """
         if isinstance(f, basestring):
@@ -121,7 +124,7 @@ class Dbf(object):
                 # created or opened and truncated)
                 self.stream = file(f, "w+b")
             else:
-                # tabe file must exist
+                # table file must exist
                 self.stream = file(f, ("r+b", "rb")[bool(readOnly)])
         else:
             # a stream
@@ -136,6 +139,14 @@ class Dbf(object):
         self.ignoreErrors = ignoreErrors
         self._new = bool(new)
         self._changed = False
+        if memoFile:
+            self.memo = memo.MemoFile(memoFile, readOnly=readOnly, new=new)
+        elif self.header.hasMemoField:
+            self.memo = memo.MemoFile(memo.MemoFile.memoFileName(self.name),
+                readOnly=readOnly, new=new)
+        else:
+            self.memo = None
+        self.header.setMemoFile(self.memo)
 
     ## properties
 
@@ -197,6 +208,7 @@ class Dbf(object):
             self.header.setCurrentDate()
             self.header.write(self.stream)
             self.stream.flush()
+            self.memo.flush()
             self._changed = False
 
     def indexOfFieldName(self, name):
@@ -224,6 +236,11 @@ class Dbf(object):
         """
         if self._new:
             self.header.addField(*defs)
+            if self.header.hasMemoField:
+                if not self.memo:
+                    self.memo = memo.MemoFile(
+                        memo.MemoFile.memoFileName(self.name), new=True)
+                self.header.setMemoFile(self.memo)
         else:
             raise TypeError("At least one record was added, "
                 "structure can't be changed")
@@ -239,6 +256,8 @@ class Dbf(object):
 
     def __getitem__(self, index):
         """Return `DbfRecord` instance."""
+        if isinstance(index, slice):
+            return [self[_recno] for _recno in range(self.recordCount)[index]]
         return self.RecordClass.fromStream(self, self._fixIndex(index))
 
     def __setitem__(self, index, record):

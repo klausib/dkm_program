@@ -15,7 +15,7 @@ from mod_diverses import *
 # mit angegebnenem Namen
 ################################################################
 
-def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
+def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None, lookup_db_cursor = None):
 
 
 
@@ -123,7 +123,24 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None):
                 inhalt = out_feat.GetFieldAsString('KG') + out_feat.GetFieldAsString('GNR')
                 out_feat.SetField('GSTNR', inhalt)
                 #print polgem_name
-                out_feat.SetField('PGEM_NAME', str(polgem_name))
+
+                # Sonderbehandlung für VLBG gesamt
+                if polgem_name == 'Vorarlberg':
+                    lookup_db_cursor.execute("select * from kat where kgem_gesnr = " + out_feat.GetFieldAsString('KG'))
+
+                    #Alle passenden records auf einmal einlesen
+                    pgem_gesnr = lookup_db_cursor.fetchone()  # sollte einen Treffer geben
+
+                    if len(pgem_gesnr) > 0:
+                        lookup_db_cursor.execute("select * from pol where pgem_gesn = " +  str( pgem_gesnr['pgem_gesnr']))
+
+                        #Alle passenden records auf einmal einlesen
+                        pgem_name = str(lookup_db_cursor.fetchone()['pgem_name'])    #zurücksetzen
+                        out_feat.SetField('PGEM_NAME', pgem_name)
+                    else:
+                        out_feat.SetField('PGEM_NAME', str('ERROR'))
+                else:
+                    out_feat.SetField('PGEM_NAME', str(polgem_name))
                 #out_feat.SetField('FID',fid)
 
             if string.find(ausname, 'GNR') > -1: # Zusätzliche Attribute für GNR Flächen - Masstabsfeld

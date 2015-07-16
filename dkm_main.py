@@ -227,7 +227,7 @@ class Dialog (QtGui.QMainWindow, Ui_Main_Window):
 
             for pfad_in in pfadlist:
                 filelist.append (pfad_in + "GST" + "_V2.shp")
-            shapemerge(filelist,pfad + '/Grundstuecke/','GST.shp',None,pgem_name) # macht auch die indices
+            shapemerge(filelist,pfad + '/Grundstuecke/','GST.shp',None,pgem_name,self.cursor_sqlite) # macht auch die indices
 
             # ACHTUNG: Zuerst GST und dann GNR!!
             filelist = []
