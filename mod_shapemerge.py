@@ -64,12 +64,12 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None, 
             out_layer.CreateField(feld)
 
             feld = ogr.FieldDefn('KG_GST', ogr.OFTString)
-            feld.SetWidth(10)
+            feld.SetWidth(15)
             out_layer.CreateField(feld)
 
 
             feld = ogr.FieldDefn('GSTNR', ogr.OFTString)
-            feld.SetWidth(10)
+            feld.SetWidth(15)
             out_layer.CreateField(feld)
 
             feld = ogr.FieldDefn('PGEM_NAME', ogr.OFTString)

@@ -319,11 +319,11 @@ def parse(log_error, input_path, input_name, output_path, output_name, typ, spal
 
                 delta_x = feature.GetGeometryRef().GetX() - X
                 delta_y = feature.GetGeometryRef().GetY() - Y
-                pf_length = math.sqrt( math.pow(delta_x,2 ) +  math.pow(delta_x,2 ))
+                pf_length = math.sqrt( math.pow(delta_x,2 ) +  math.pow(delta_y,2 ))
 
                 lyr_vorlage.SetAttributeFilter('ZEICHEN = \'' + '9pfeil' + '\'')
 
-                rot_p = rot = feature.GetFieldAsDouble('ROT_PF')
+                rot_p = feature.GetFieldAsDouble('ROT_PF')
 
                 symbi_feat_p = lyr_vorlage.GetNextFeature() # there must be only one - and this one is fetched
                                                             # and will be later put on its correct position
@@ -341,11 +341,23 @@ def parse(log_error, input_path, input_name, output_path, output_name, typ, spal
         outfeature = ogr.Feature(feat_defn) # ACHTUNG: ohne korrekte featuredefn lassen sich die Attribute nicht schreiben
 
         # und dem Feature die Geometrie zuweisen
-        if add_g:   # Grenzkatasterstriche
+
+        if add_p and add_g: # Pfeil bei Pfeilnummer und Grenzkatsterstrich
+
+            geom_temp_g = loads(geom_neu_g)
+            geom_neu = geom_temp_g.union(loads(geom_neu))
+
+            geom_temp_p = loads(geom_neu_p)
+            geom_temp_p = geom_temp_p.difference(geom_neu.buffer(1.3))   # Pfeile werden beschnitten
+            temp_p = geom_temp_p.union((geom_neu))
+
+            outfeature.SetGeometry(ogr.CreateGeometryFromWkb(dumps(temp_p)))
+        elif add_g:   # Grenzkatasterstriche
             geom_temp_g = loads(geom_neu_g)
             temp_g = geom_temp_g.union(loads(geom_neu))
             outfeature.SetGeometry(ogr.CreateGeometryFromWkb(dumps(temp_g)))
-        elif add_p: # Pfeil bei Pfeilnummer
+
+        elif add_p:
             geom_temp_p = loads(geom_neu_p)
             geom_temp_p = geom_temp_p.difference(loads(geom_neu).buffer(1.3))   # Pfeile werden beschnitten
             temp_p = geom_temp_p.union(loads(geom_neu))
