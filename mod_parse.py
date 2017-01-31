@@ -35,7 +35,7 @@ def logroutine(log_error, text,flag):
 # wird, bei denen reicht das dann auch schon).
 #  Der Text selber wird in einem Sub erzeugt
 ######################################################
-def parse(log_error, input_path, input_name, output_path, output_name, typ, spaltenname_symbol = None, spaltenname_text = None, spaltenname_rotation = None, spaltenname_groesse = None, spaltenname_X = None, spaltenname_Y = None, gst_multiply = 1, path_to_lookup_shape = 'shape_vorlagen/', name_of_lookup_shape = 'vorlage_dkm.shp'):
+def parse(polgem_name, log_error, input_path, input_name, output_path, output_name, typ, spaltenname_symbol = None, spaltenname_text = None, spaltenname_rotation = None, spaltenname_groesse = None, spaltenname_X = None, spaltenname_Y = None, gst_multiply = 1, path_to_lookup_shape = 'shape_vorlagen/', name_of_lookup_shape = 'vorlage_dkm.shp'):
 
 
 
@@ -98,6 +98,10 @@ def parse(log_error, input_path, input_name, output_path, output_name, typ, spal
     # aber so find ich es eleganter
     Fid_feld = ogr.FieldDefn('FID', ogr.OFTInteger)
     lyr_out.CreateField(Fid_feld)
+
+    feld = ogr.FieldDefn('PGEM_NAME', ogr.OFTString)
+    feld.SetWidth(20)
+    lyr_out.CreateField(feld)
 
 
 
@@ -368,7 +372,9 @@ def parse(log_error, input_path, input_name, output_path, output_name, typ, spal
 
 
         # die Feature ID machen wir auch noch rein
+        # und den Namen der Politischen Gemeinde
         outfeature.SetField('FID',feat_id)
+        outfeature.SetField('PGEM_NAME', str(polgem_name))
 
 
         # Genauso wie ein Zusatzattribut für Nutzungssymbole

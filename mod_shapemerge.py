@@ -56,34 +56,45 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None, 
             feldnamen.append(Fdefn.GetName())
         i = i + 1
 
-    # Ausnahmeregel für Grundstückshape
-    # wir brauchen zusätzliche Felder
-    if string.find(ausname, 'GST') > -1: # Zusätzliche Attribute für GST Flächen
+    if polgem_name != None: # Bei Vorarlberg gesamt hier nicht rein (polgem_name ist dann None weil nichts übergeben wird)
 
-            feld = ogr.FieldDefn('Area', ogr.OFTReal)
-            out_layer.CreateField(feld)
+        # Ausnahmeregel für Grundstückshape
+        # wir brauchen zusätzliche Felder
+        if string.find(ausname, 'GST') > -1: # Zusätzliche Attribute für GST Flächen
 
-            feld = ogr.FieldDefn('KG_GST', ogr.OFTString)
-            feld.SetWidth(15)
-            out_layer.CreateField(feld)
+                feld = ogr.FieldDefn('Area', ogr.OFTReal)
+                out_layer.CreateField(feld)
+
+                feld = ogr.FieldDefn('KG_GST', ogr.OFTString)
+                feld.SetWidth(15)
+                out_layer.CreateField(feld)
 
 
-            feld = ogr.FieldDefn('GSTNR', ogr.OFTString)
-            feld.SetWidth(15)
-            out_layer.CreateField(feld)
+                feld = ogr.FieldDefn('GSTNR', ogr.OFTString)
+                feld.SetWidth(15)
+                out_layer.CreateField(feld)
 
+
+                feld = ogr.FieldDefn('PGEM_NAME', ogr.OFTString)
+                feld.SetWidth(20)
+                out_layer.CreateField(feld)
+
+        # Ausnahmeregel für Grundstücksnummernshape
+        # wir brauchen zusätzliche Felder
+        elif string.find(ausname, 'GNR') > -1: # Masstabsattribut für GNR Shape
+
+                feld = ogr.FieldDefn('MST', ogr.OFTInteger)
+                out_layer.CreateField(feld)
+                feld = ogr.FieldDefn('PGEM_NAME', ogr.OFTString)
+                feld.SetWidth(20)
+                out_layer.CreateField(feld)
+
+        # Ergänzung für Datenbank Views
+        # um gemeindeweise Aufteilung zu unterscheiden
+        else:
             feld = ogr.FieldDefn('PGEM_NAME', ogr.OFTString)
             feld.SetWidth(20)
             out_layer.CreateField(feld)
-
-    # Ausnahmeregel für Grundstücksnummernshape
-    # wir brauchen zusätzliche Felder
-    if string.find(ausname, 'GNR') > -1: # Masstabsattribut für GNR Shape
-
-            feld = ogr.FieldDefn('MST', ogr.OFTInteger)
-            out_layer.CreateField(feld)
-
-
 
     # nun wird die Liste der zu mergenden Shapes
     # abgearbeitet
@@ -115,50 +126,57 @@ def shapemerge(liste,auspfad,ausname,liste_feldnamen = None,polgem_name = None, 
 
             out_feat.SetGeometry(feat.GetGeometryRef().Clone())
 
-            if string.find(ausname, 'GST') > -1: # Zusätzliche Attribute für GST Flächen
+            if polgem_name != None:
+                if string.find(ausname, 'GST') > -1: # Zusätzliche Attribute für GST Flächen
 
-                out_feat.SetField('area', feat.GetGeometryRef().GetArea())
-                inhalt = out_feat.GetFieldAsString('KG') + '-' + out_feat.GetFieldAsString('GNR')
-                out_feat.SetField('KG_GST', inhalt)
-                inhalt = out_feat.GetFieldAsString('KG') + out_feat.GetFieldAsString('GNR')
-                out_feat.SetField('GSTNR', inhalt)
-                #print polgem_name
+                    out_feat.SetField('area', feat.GetGeometryRef().GetArea())
+                    inhalt = out_feat.GetFieldAsString('KG') + '-' + out_feat.GetFieldAsString('GNR')
+                    out_feat.SetField('KG_GST', inhalt)
+                    inhalt = out_feat.GetFieldAsString('KG') + out_feat.GetFieldAsString('GNR')
+                    out_feat.SetField('GSTNR', inhalt)
+                    #print polgem_name
 
-                # Sonderbehandlung für VLBG gesamt
-                if polgem_name == 'Vorarlberg':
-                    lookup_db_cursor.execute("select * from kat where kgem_gesnr = " + out_feat.GetFieldAsString('KG'))
-
-                    #Alle passenden records auf einmal einlesen
-                    pgem_gesnr = lookup_db_cursor.fetchone()  # sollte einen Treffer geben
-
-                    if len(pgem_gesnr) > 0:
-                        lookup_db_cursor.execute("select * from pol where pgem_gesn = " +  str( pgem_gesnr['pgem_gesnr']))
-
-                        #Alle passenden records auf einmal einlesen
-                        pgem_name = str(lookup_db_cursor.fetchone()['pgem_name'])    #zurücksetzen
-                        out_feat.SetField('PGEM_NAME', pgem_name)
-                    else:
-                        out_feat.SetField('PGEM_NAME', str('ERROR'))
-                else:
+    ##                # Sonderbehandlung für VLBG gesamt
+    ##                if polgem_name == 'Vorarlberg':
+    ##                    lookup_db_cursor.execute("select * from kat where kgem_gesnr = " + out_feat.GetFieldAsString('KG'))
+    ##
+    ##                    #Alle passenden records auf einmal einlesen
+    ##                    pgem_gesnr = lookup_db_cursor.fetchone()  # sollte einen Treffer geben
+    ##
+    ##                    if len(pgem_gesnr) > 0:
+    ##                        lookup_db_cursor.execute("select * from pol where pgem_gesn = " +  str( pgem_gesnr['pgem_gesnr']))
+    ##
+    ##                        #Alle passenden records auf einmal einlesen
+    ##                        pgem_name = str(lookup_db_cursor.fetchone()['pgem_name'])    #zurücksetzen
+    ##                        out_feat.SetField('PGEM_NAME', pgem_name)
+    ##                    else:
+    ##                        out_feat.SetField('PGEM_NAME', str('ERROR'))
+    ##                else:
+    ##                    out_feat.SetField('PGEM_NAME', str(polgem_name))
                     out_feat.SetField('PGEM_NAME', str(polgem_name))
-                #out_feat.SetField('FID',fid)
+                    #out_feat.SetField('FID',fid)
 
-            if string.find(ausname, 'GNR') > -1: # Zusätzliche Attribute für GNR Flächen - Masstabsfeld
+                elif string.find(ausname, 'GNR') > -1: # Zusätzliche Attribute für GNR Flächen - Masstabsfeld
 
-                #so wärs wenn das maßstabsfeld noch verwendet wird,
-                #das ist aber anscheinend nicht mehr der Fall wie das DXF zeigt
-                ##########################################################################
-                #nummer = out_feat.GetFieldAsString('GNR').strip()
-                #mst = 2
-                #lyr_gst.ResetReading()  # Unbedingt den Cursor an den Anfang stellen
-                #for feat_gst in lyr_gst:
-                    #if feat_gst.GetFieldAsString('GNR').strip() == nummer:
-                        #mst = feat_gst.GetFieldAsInteger('MST') * 2 # BEV ist leider inkonsistent, deshalb Wert verdoppeln
-                #out_feat.SetField('MST', mst)
-                #############################################################################
+                    #so wärs wenn das maßstabsfeld noch verwendet wird,
+                    #das ist aber anscheinend nicht mehr der Fall wie das DXF zeigt
+                    ##########################################################################
+                    #nummer = out_feat.GetFieldAsString('GNR').strip()
+                    #mst = 2
+                    #lyr_gst.ResetReading()  # Unbedingt den Cursor an den Anfang stellen
+                    #for feat_gst in lyr_gst:
+                        #if feat_gst.GetFieldAsString('GNR').strip() == nummer:
+                            #mst = feat_gst.GetFieldAsInteger('MST') * 2 # BEV ist leider inkonsistent, deshalb Wert verdoppeln
+                    #out_feat.SetField('MST', mst)
+                    #############################################################################
 
 
-                out_feat.SetField('MST', 2) # wir setzen einfach 2 (Grüße Nummern 2 Meter) ins Feld ein
+                    out_feat.SetField('MST', 2) # wir setzen einfach 2 (Grüße Nummern 2 Meter) ins Feld ein
+                    out_feat.SetField('PGEM_NAME', str(polgem_name))
+                else:
+                    #if string.find(ausname, 'FPT'):
+                        #QtGui.QMessageBox.critical(None, "FPT",str(polgem_name))
+                    out_feat.SetField('PGEM_NAME', str(polgem_name))
 
             out_layer.CreateFeature(out_feat)
 
